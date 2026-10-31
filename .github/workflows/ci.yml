@@ -1,0 +1,53 @@
+name: Verify Agent Skill
+on: [push, pull_request]
+permissions:
+  contents: read
+jobs:
+  test:
+    name: Python ${{ matrix.python-version }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ['3.10', '3.12']
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Install dependencies
+        run: python -m pip install -r requirements.txt
+      - name: Run real unit tests
+        run: python -m unittest discover -s tests -v
+      - name: Compile Python
+        run: python -m compileall -q scripts tests
+      - name: Execute synthetic fixtures
+        shell: bash
+        run: |
+          set -euo pipefail
+          python scripts/audit.py examples/safe.yaml --format json --fail-on high > /tmp/safe.json
+          python scripts/audit.py examples/review.yaml --format json --fail-on never > /tmp/review.json
+          python -c 'import json; assert json.load(open("/tmp/safe.json"))["findings"] == []'
+          python -c 'import json; assert any(f["code"] == "DATA_PORT_PUBLIC_BIND" for f in json.load(open("/tmp/review.json"))["findings"])'
+      - name: Verify skill metadata and exact official logo
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY_CHECK'
+          from pathlib import Path
+          import hashlib
+          import re
+          import yaml
+          skill = Path('SKILL.md').read_text(encoding='utf-8')
+          assert skill.startswith('---\n')
+          parts = skill.split('---\n', 2)
+          meta = yaml.safe_load(parts[1])
+          assert meta['name'] == 'compose-port-exposure-audit'
+          assert isinstance(meta.get('description'), str) and 20 < len(meta['description']) <= 1024
+          assert '## Procedure' in skill
+          assert Path('assets/hero.svg').exists()
+          assert hashlib.sha1(b'blob '+str(Path('assets/area-zero-logo-full.svg').stat().st_size).encode()+b'\0'+Path('assets/area-zero-logo-full.svg').read_bytes()).hexdigest() == 'e1d2a0686010b251a530f9ad7eaf9afddf6a706b'
+          PY_CHECK

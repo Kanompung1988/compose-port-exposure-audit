@@ -1,0 +1,13 @@
+services:
+  db:
+    image: postgres:16
+    ports:
+      - "5432:5432"
+  api:
+    image: example/api:1
+    ports:
+      - "8080:8080"
+  app:
+    image: example/app:1
+    ports:
+      - "${PUBLIC_PORT:-9000}:9000"

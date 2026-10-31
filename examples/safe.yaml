@@ -1,0 +1,8 @@
+services:
+  db:
+    image: postgres:16
+    ports:
+      - "127.0.0.1:15432:5432"
+  backend:
+    image: example/backend:1
+    expose: ["8080"]
